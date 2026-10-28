@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>澄明 · 合成诊断工作台</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="masthead">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">D</span><div><strong>澄明诊断</strong><span>本地合成场景工作台</span></div></div>
+    <p id="identity">尚未登录</p>
+  </header>
+  <main>
+    <section class="intro">
+      <p class="eyebrow">可追溯 · 证据门控 · 人工复核</p>
+      <h1>从采样到判断，每一步都有依据。</h1>
+      <p>原创合成数据仅用于验证软件流程，不代表真实设备、门店或现场准确率。模型预测概率不是物理置信度；安全相关结论必须专家复核。</p>
+    </section>
+
+    <section class="card" aria-labelledby="login-title">
+      <div class="section-heading"><h2 id="login-title">身份验证</h2><span class="badge">Bearer / 本地令牌</span></div>
+      <form id="login-form" class="inline-form" autocomplete="off">
+        <label class="grow" for="token-input">手动输入由本地管理员预置的令牌
+          <input id="token-input" type="password" required autocomplete="off" spellcheck="false" placeholder="令牌仅在当前页面内存中保留">
+        </label>
+        <button type="submit">登录</button>
+        <button id="logout" type="button" class="secondary">退出并清空</button>
+      </form>
+      <p class="hint">页面不保存令牌到浏览器存储或 URL；刷新即需重新登录。角色以服务端身份为准，页面不可指定角色。</p>
+    </section>
+
+    <p id="notice" role="status" aria-live="polite">请先登录，再加载合成样例或查看授权记录。</p>
+
+    <div id="workspace" hidden>
+      <nav aria-label="工作台导航"><a href="#new-diagnosis">新建诊断</a><a href="#records">诊断记录</a><a href="#result">证据与结果</a><a href="#governance">知识与模型</a><a href="#audit">审计</a></nav>
+      <div class="workspace-grid">
+        <section id="new-diagnosis" class="card" aria-labelledby="new-title">
+          <div class="section-heading"><h2 id="new-title">01 / 感知输入</h2><span class="badge">合成样例</span></div>
+          <div class="inline-form">
+            <label class="grow" for="example-class">目标合成场景
+              <select id="example-class">
+                <optgroup label="安全回路">
+                  <option value="circuit_open">回路开路 · circuit_open</option>
+                  <option value="circuit_short">回路短路 · circuit_short</option>
+                  <option value="safety_sensor_invalid">传感器异常 · safety_sensor_invalid</option>
+                  <option value="safety_normal">正常安全回路 · safety_normal</option>
+                </optgroup>
+                <optgroup label="低压供电">
+                  <option value="battery_depleted">电池亏电 · battery_depleted</option>
+                  <option value="charging_failure">充电异常 · charging_failure</option>
+                  <option value="terminal_resistance">端子电阻异常 · terminal_resistance</option>
+                  <option value="voltage_normal">正常低压供电 · voltage_normal</option>
+                </optgroup>
+              </select>
+            </label>
+            <button id="load-example" type="button" class="secondary">加载新样例</button>
+          </div>
+          <p class="hint">样例来自本地原创模拟器，每次加载使用新 request_id。类别只选择生成场景，不是传给模型的真实标签。可编辑以下 JSON；同 ID 重试同内容是幂等的，修改内容后请使用新 ID。</p>
+          <form id="diagnosis-form">
+            <label for="request-json">诊断请求 JSON</label>
+            <textarea id="request-json" rows="17" required spellcheck="false" placeholder="先加载一个授权样例，或输入符合 DiagnosisRequest 的 JSON。"></textarea>
+            <button type="submit">提交诊断</button>
+          </form>
+          <details>
+            <summary>主动遥测入口</summary>
+            <p class="hint">仅持续告警触发；事件排序、迟到与冷却由服务端判断。不是每个样例都会触发诊断。</p>
+            <button id="prepare-telemetry" type="button" class="secondary">将当前采样转为遥测草稿</button>
+            <form id="telemetry-form">
+              <label for="telemetry-json">TelemetryEvent JSON</label>
+              <textarea id="telemetry-json" rows="8" required spellcheck="false"></textarea>
+              <button type="submit">提交遥测</button>
+            </form>
+          </details>
+        </section>
+
+        <section id="records" class="card" aria-labelledby="records-title">
+          <div class="section-heading"><h2 id="records-title">02 / 诊断记录</h2><button id="refresh-records" type="button" class="secondary compact">刷新</button></div>
+          <p class="hint">最近100条。操作员仅能查看自己的记录；专家与管理员可复核授权范围内的诊断。</p>
+          <ul id="diagnosis-list" class="record-list"><li>尚未加载。</li></ul>
+        </section>
+      </div>
+
+      <section id="result" class="card" aria-labelledby="result-title">
+        <div class="section-heading"><h2 id="result-title">03 / 证据与门控结果</h2><span id="outcome" class="badge">尚未选择</span></div>
+        <p id="result-empty">提交诊断，或从记录中选择一项。</p>
+        <div id="result-content" hidden>
+          <dl id="result-meta" class="metadata"></dl>
+          <p id="result-reason" class="callout"></p>
+          <h3>执行阶段</h3><ol id="stages" class="stages"></ol>
+          <div class="workspace-grid">
+            <div>
+              <h3>模型预测概率</h3>
+              <p class="hint">分类器输出的相对概率，不是物理置信度、故障发生率或真实维修成功率。未运行模型时不显示虚构概率。</p>
+              <p id="model-gate"></p>
+              <div class="table-scroll"><table><thead><tr><th>类别</th><th>预测概率</th><th>比例</th></tr></thead><tbody id="probabilities"></tbody></table></div>
+            </div>
+            <div>
+              <h3>证据三态</h3><p class="hint">支持 / 反驳 / 缺失。root 为按知识 AND/OR 关系计算的聚合结论，不应把所有叶项简单相与。缺失不等于正常；模型门限不能替代证据门控。</p>
+              <ul id="evidence-list" class="evidence-list"></ul>
+            </div>
+          </div>
+          <h3>归因与建议</h3><p id="attribution"></p>
+          <h3>合成门店候选</h3><p class="hint">仅按技能、库存、余量与球面距离筛选排名，不是现实预约。确认时重新校验并占用合成资源；派单成功仍不表示维修完成。</p>
+          <ul id="candidate-list" class="candidate-list"></ul>
+          <details><summary>完整诊断 JSON</summary><pre id="result-json"></pre></details>
+
+          <div class="workspace-grid expert-only" hidden>
+            <form id="feedback-form" class="subcard">
+              <h3>专家反馈</h3>
+              <p class="hint">反馈用于留痕和后续离线评估，不会直接改变当前预测、自动训练或发布模型。</p>
+              <label for="feedback-id">反馈幂等 ID</label><input id="feedback-id" required maxlength="100" pattern="[A-Za-z0-9_.:\-]+">
+              <label for="correct-class">核实类别 ID</label><input id="correct-class" required maxlength="100" placeholder="例如 circuit_open">
+              <label for="actual-action">实际处置</label><textarea id="actual-action" rows="3" required maxlength="1000"></textarea>
+              <label class="checkbox"><input id="repair-confirmed" type="checkbox">专家确认维修完成（非系统自动推断）</label>
+              <label for="feedback-note">补充备注</label><textarea id="feedback-note" rows="2" maxlength="2000"></textarea>
+              <button type="submit">提交专家反馈</button>
+            </form>
+            <form id="assign-form" class="subcard">
+              <h3>确认合成派单</h3>
+              <label for="assign-id">派单幂等 ID</label><input id="assign-id" required maxlength="100" pattern="[A-Za-z0-9_.:\-]+">
+              <label for="service-id">当前候选服务站</label><select id="service-id" required></select>
+              <p class="hint">无有效归因或无候选时不能派单。重复/冲突操作由服务端事务检查；这里不会调用真实维修服务。</p>
+              <button id="assign-submit" type="submit">确认派单（合成）</button>
+            </form>
+            <form id="close-form" class="subcard">
+              <h3>关闭合成服务工单</h3>
+              <label for="close-id">关闭幂等 ID</label><input id="close-id" required maxlength="100">
+              <label for="close-outcome">关闭结果</label><select id="close-outcome"><option value="cancelled">取消并归还预留资源</option><option value="completed">确认合成服务完成</option></select>
+              <label for="close-note">人工说明</label><textarea id="close-note" required maxlength="1000" rows="2"></textarea>
+              <p class="hint">只对本地已确认派单生效，不代表现实维修完成。</p><button type="submit">提交关闭</button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section id="governance" class="card" aria-labelledby="governance-title">
+        <div class="section-heading"><h2 id="governance-title">04 / 知识与模型版本</h2><button id="load-knowledge" type="button" class="secondary compact">加载当前知识</button></div>
+        <p class="hint">当前已发布快照对所有已登录身份可见。专家/管理员提交新版本草稿，另一名管理员独立批准后生效。训练与模型注册由本地 CLI 完成；网页只激活已注册且通过回归门限的版本。</p>
+        <form id="knowledge-form">
+          <label for="knowledge-json">当前快照 / 新知识草稿 JSON（version 格式 knowledge-v正整数，如 knowledge-v2）</label>
+          <textarea id="knowledge-json" rows="10" spellcheck="false" required></textarea>
+          <button type="submit" class="expert-only" hidden>提交新版本草稿</button>
+        </form>
+        <div class="workspace-grid admin-only" hidden>
+          <form id="publish-form" class="subcard">
+            <h3>独立审批知识</h3><label for="publish-version">待批准的草稿 version</label><input id="publish-version" required maxlength="100" pattern="[A-Za-z0-9_.:\-]+">
+            <p class="hint">必须与提案人是不同服务端身份。审批发布会切换当前知识版本。</p><button type="submit">批准并发布</button>
+          </form>
+          <form id="activate-form" class="subcard">
+            <h3>激活已注册模型</h3><label for="model-version">模型 version</label><input id="model-version" required maxlength="100" pattern="[A-Za-z0-9_.:\-]+">
+            <label for="activate-id">激活幂等 ID</label><input id="activate-id" required maxlength="100" pattern="[A-Za-z0-9_.:\-]+">
+            <p class="hint">只批准已有模型版本。合成评测门限不代表真实环境中的安全准入。</p><button type="submit">检查门限并激活</button>
+          </form>
+          <form id="rollback-form" class="subcard">
+            <h3>回滚已批准模型</h3>
+            <label for="rollback-version">历史已批准版本</label><input id="rollback-version" required maxlength="100">
+            <label for="rollback-id">回滚幂等 ID</label><input id="rollback-id" required maxlength="100">
+            <label for="rollback-reason">回滚原因</label><textarea id="rollback-reason" required maxlength="1000" rows="2"></textarea>
+            <button type="submit">检查并回滚</button>
+          </form>
+        </div>
+      </section>
+
+      <section id="audit" class="card expert-only" hidden aria-labelledby="audit-title">
+        <div class="section-heading"><h2 id="audit-title">05 / 审计留痕</h2><button id="refresh-audit" type="button" class="secondary compact">刷新审计</button></div>
+        <p class="hint">最近200条审计。所有字段作为纯文本显示，备注中的 HTML 不会执行。</p><ol id="audit-list" class="audit-list"></ol>
+      </section>
+      <details class="card"><summary>最近业务操作响应</summary><pre id="operation-result">暂无操作。</pre></details>
+    </div>
+  </main>
+  <footer>本地演示 / 原创合成场景 · 未经真实设备验证，勿用于安全决策或绕过人工复核。</footer>
+</body>
+</html>
